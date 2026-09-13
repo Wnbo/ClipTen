@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
+export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
+if [[ "${1:-}" == "--integration" ]]; then
+    export CLIPTEN_INTEGRATION_TESTS=1
+    shift
+fi
+swift test --cache-path "$PWD/.build/swiftpm-cache" "$@"

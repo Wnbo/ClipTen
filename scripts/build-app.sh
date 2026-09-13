@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
+export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
+swift build -c release --cache-path "$PWD/.build/swiftpm-cache" "$@"
+APP="$PWD/dist/ClipTen.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp .build/release/ClipTen "$APP/Contents/MacOS/.ClipTen-next"
+mv -f "$APP/Contents/MacOS/.ClipTen-next" "$APP/Contents/MacOS/ClipTen"
+cp Resources/Info.plist "$APP/Contents/Info.plist"
+swift -module-cache-path "$CLANG_MODULE_CACHE_PATH" scripts/make-icon.swift .build/ClipTen.iconset "$APP/Contents/Resources/AppIcon.icns"
+codesign --force --sign - "$APP"
+codesign --verify --strict "$APP"
+echo "Built: $APP"
