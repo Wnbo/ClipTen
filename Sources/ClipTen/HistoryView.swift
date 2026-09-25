@@ -5,6 +5,7 @@ import SwiftUI
 struct HistoryView: View {
     @ObservedObject var store: ClipboardStore
     let openSettings: () -> Void
+    let preview: (ClipRecord) -> Void
     let layoutDidChange: () -> Void
     let select: (ClipRecord) -> Void
 
@@ -64,7 +65,7 @@ struct HistoryView: View {
                         ForEach(store.history.records) { record in
                             ClipRow(record: record, thumbnail: store.thumbnail(for: record),
                                     isCurrent: store.currentRecordID == record.id,
-                                    action: { select(record) }, remove: { store.requestRemove(record) })
+                                    preview: { preview(record) }, action: { select(record) }, remove: { store.requestRemove(record) })
                         }
                     }.padding(8)
                 }.frame(maxHeight: .infinity)
@@ -136,22 +137,36 @@ private struct ClipRow: View {
     let record: ClipRecord
     let thumbnail: NSImage?
     let isCurrent: Bool
+    let preview: () -> Void
     let action: () -> Void
     let remove: () -> Void
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 0) {
+          Button(action: isImage ? preview : action) {
+              ZStack(alignment: .bottomTrailing) {
+                  RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08))
+                  if let thumbnail {
+                      Image(nsImage: thumbnail).resizable().scaledToFit().padding(3)
+                  } else {
+                      Image(systemName: isImage ? "photo" : "text.alignleft")
+                          .font(.title3).foregroundStyle(.secondary)
+                          .frame(maxWidth: .infinity, maxHeight: .infinity)
+                  }
+                  if isImage {
+                      Image(systemName: "plus.magnifyingglass")
+                          .font(.system(size: 10, weight: .semibold))
+                          .padding(4).background(.regularMaterial, in: Circle())
+                          .opacity(hovering ? 1 : 0.65)
+                  }
+              }.frame(width: 52, height: 52)
+          }.buttonStyle(.plain).interactiveCursor()
+              .help(isImage ? "放大预览图片" : "恢复到剪贴板")
+              .accessibilityLabel(isImage ? "放大预览图片" : accessibilityTitle)
+              .padding(.leading, 10).padding(.trailing, 12)
           Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08))
-                    if let thumbnail {
-                        Image(nsImage: thumbnail).resizable().scaledToFit().padding(3)
-                    } else {
-                        Image(systemName: "text.alignleft").font(.title3).foregroundStyle(.secondary)
-                    }
-                }.frame(width: 52, height: 52)
+            HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 5) {
                     switch record.content {
                     case .text(let text):
@@ -177,7 +192,7 @@ private struct ClipRow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(10).frame(height: 72)
+            .padding(.vertical, 10).padding(.trailing, 10).frame(height: 72)
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
@@ -193,6 +208,11 @@ private struct ClipRow: View {
         }
         .background(hovering ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 10))
         .onHover { hovering = $0 }
+    }
+
+    private var isImage: Bool {
+        if case .image = record.content { return true }
+        return false
     }
 
     private var accessibilityTitle: String {

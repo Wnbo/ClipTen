@@ -1,4 +1,5 @@
 import AppKit
+import ClipTenCore
 import SwiftUI
 
 @MainActor
@@ -9,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var previousApplication: NSRunningApplication?
     private let loginItems = LoginItemManager()
     private var settingsWindow: NSWindow?
+    private var imagePreview: ImagePreviewController?
     private var waitingForTermination = false
     private var layoutUpdateScheduled = false
 
@@ -44,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func historyView() -> HistoryView {
         HistoryView(store: store,
             openSettings: { [weak self] in self?.showSettings() },
+            preview: { [weak self] in self?.showImagePreview($0) },
             layoutDidChange: { [weak self] in self?.schedulePopoverResize() }) { [weak self] record in
             guard let self else { return }
             if self.store.restore(record) {
@@ -85,6 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // keeps its positioning view attached. No close/re-show or frame edits.
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         popover.contentSize = size
+    }
+
+    private func showImagePreview(_ record: ClipRecord) {
+        guard let controller = ImagePreviewController(record: record, copy: { [weak self] in
+            self?.store.restore(record) ?? false
+        }) else { return }
+        imagePreview?.close()
+        imagePreview = controller
+        controller.onClose = { [weak self] in self?.imagePreview = nil }
+        popover.performClose(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
     }
 
     private func showSettings() {
