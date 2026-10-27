@@ -204,6 +204,13 @@ final class ClipboardStore: ObservableObject {
         preferences.set(enabled, forKey: "confirmClipboardClear")
     }
 
+    func toggleLock(_ record: ClipRecord) {
+        guard !isLoading, !isTerminating, !isChangingStorage else { return }
+        guard let current = history.records.first(where: { $0.id == record.id }),
+              current.isLocked || history.lockedCount < ClipHistory.lockLimit else { return }
+        if history.toggleLock(id: record.id) { scheduleSave() }
+    }
+
     func requestClear() {
         guard !isLoading, !isTerminating, !isChangingStorage else { return }
         if confirmsClipboardClear { pendingDeletion = .all }
@@ -211,6 +218,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     func requestRemove(_ record: ClipRecord) {
+        guard history.records.contains(where: { $0.id == record.id && !$0.isLocked }) else { return }
         guard !isLoading, !isTerminating, !isChangingStorage else { return }
         if confirmsClipboardClear && currentRecordID == record.id {
             pendingDeletion = .current(record)
@@ -241,7 +249,8 @@ final class ClipboardStore: ObservableObject {
         guard !isLoading, !isTerminating, !isChangingStorage else { return }
         history.clear()
         clearClipboard()
-        thumbnails.removeAll()
+        let retained = Set(history.records.map(\.id))
+        thumbnails = thumbnails.filter { retained.contains($0.key) }
         if notice != nil { notice = nil }
         scheduleSave()
     }
@@ -251,6 +260,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func remove(_ record: ClipRecord, clearingClipboard: Bool) {
+        guard history.records.contains(where: { $0.id == record.id && !$0.isLocked }) else { return }
         guard !isLoading, !isTerminating, !isChangingStorage else { return }
         history.remove(id: record.id)
         if clearingClipboard { clearClipboard() }

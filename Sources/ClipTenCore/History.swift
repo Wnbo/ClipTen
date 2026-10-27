@@ -9,9 +9,29 @@ public struct ClipRecord: Identifiable, Sendable, Codable {
     public let id: UUID
     public let content: ClipContent
     public let copiedAt: Date
+    public internal(set) var isLocked: Bool
+
+    public init(id: UUID, content: ClipContent, copiedAt: Date, isLocked: Bool = false) {
+        self.id = id
+        self.content = content
+        self.copiedAt = copiedAt
+        self.isLocked = isLocked
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, content, copiedAt, isLocked }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        content = try values.decode(ClipContent.self, forKey: .content)
+        copiedAt = try values.decode(Date.self, forKey: .copiedAt)
+        isLocked = try values.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+    }
 }
 
 public struct ClipHistory: Sendable {
+    public static let lockLimit = 7
+    public var lockedCount: Int { records.filter(\.isLocked).count }
     public private(set) var records: [ClipRecord] = []
     public init() {}
 
@@ -22,17 +42,34 @@ public struct ClipHistory: Sendable {
             seen.append($0.content)
             return true
         }.prefix(10).map { $0 }
+        var locks = 0
+        for index in self.records.indices where self.records[index].isLocked {
+            locks += 1
+            if locks > Self.lockLimit { self.records[index].isLocked = false }
+        }
     }
 
     public mutating func insert(_ content: ClipContent, at date: Date = Date()) {
-        // Keep useful distinct entries; copying an older entry moves it to the top.
+        // Recopying preserves identity and the lock, while updating recency.
+        let previous = records.first { $0.content == content }
         records.removeAll { $0.content == content }
-        records.insert(ClipRecord(id: UUID(), content: content, copiedAt: date), at: 0)
-        if records.count > 10 { records.removeLast(records.count - 10) }
+        records.insert(ClipRecord(id: previous?.id ?? UUID(), content: content, copiedAt: date,
+                                  isLocked: previous?.isLocked ?? false), at: 0)
+        while records.count > 10, let index = records.lastIndex(where: { !$0.isLocked }) {
+            records.remove(at: index)
+        }
     }
 
-    public mutating func clear() { records.removeAll() }
-    public mutating func remove(id: UUID) { records.removeAll { $0.id == id } }
+    @discardableResult
+    public mutating func toggleLock(id: UUID) -> Bool {
+        guard let index = records.firstIndex(where: { $0.id == id }),
+              records[index].isLocked || lockedCount < Self.lockLimit else { return false }
+        records[index].isLocked.toggle()
+        return true
+    }
+
+    public mutating func clear() { records.removeAll { !$0.isLocked } }
+    public mutating func remove(id: UUID) { records.removeAll { $0.id == id && !$0.isLocked } }
 
     public func matchingRecordID(for content: ClipContent?) -> UUID? {
         guard let content else { return nil }

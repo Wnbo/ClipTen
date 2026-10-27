@@ -51,6 +51,33 @@ struct PersistenceSettingsTests {
         }
     }
 
+    @Test func lockingPersistsAndStaleRecordCannotDeleteLockedEntry() async throws {
+        try await fixture { _, archive, preferences, _ in
+            var history = ClipHistory()
+            history.insert(.text("keep locked"))
+            try await archive.save(history)
+            preferences.set(true, forKey: "saveHistoryToDisk")
+            let store = ClipboardStore(pasteboard: NSPasteboard(name: .init("ClipTen.TestOnly.\(UUID())")),
+                                       preferences: preferences, archive: archive)
+            await store.loadSavedHistory()
+            let stale = try #require(store.history.records.first)
+            store.toggleLock(stale)
+            #expect(await store.flush())
+            #expect(try await archive.load()?.records.first?.isLocked == true)
+            store.requestRemove(stale)
+            #expect(store.pendingDeletion == nil)
+            store.remove(stale)
+            #expect(store.history.records.count == 1)
+            store.clear()
+            #expect(await store.flush())
+            #expect(try await archive.load()?.records.first?.isLocked == true)
+            store.toggleLock(stale)
+            #expect(!store.history.records[0].isLocked)
+            #expect(await store.flush())
+            #expect(try await archive.load()?.records.first?.isLocked == false)
+        }
+    }
+
     @Test func enablingWritesImmediatelyAndDisablingRemovesFile() async throws {
         try await fixture { store, archive, preferences, _ async throws in
             #expect(!store.savesToDisk)

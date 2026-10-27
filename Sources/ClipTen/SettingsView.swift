@@ -41,7 +41,7 @@ struct SettingsView: View {
                                isOn: Binding(get: { store.savesToDisk }, set: { value in
                                    Task { await store.setSavesToDisk(value) }
                                }), disabled: store.isChangingStorage || store.isLoading) {
-                        Text("保留最近 10 条文字和图片，重启后恢复。")
+                        Text("保存最多 10 条文字和图片及锁定状态。")
                         Text("关闭后删除磁盘历史，内存记录仍保留。")
                             .foregroundStyle(.tertiary)
                         if store.isChangingStorage {
@@ -62,8 +62,8 @@ struct SettingsView: View {
                                isOn: Binding(get: { store.confirmsClipboardClear },
                                              set: { store.setConfirmsClipboardClear($0) }),
                                disabled: false) {
-                        Text("清空全部历史或删除带“当前”标记的记录时，也会清空系统剪贴板。")
-                        Text("删除其他记录仅移除历史。")
+                        Text("清空未锁定记录或删除带“当前”标记的记录时，也会清空系统剪贴板。")
+                        Text("清空会保留锁定记录；删除其他记录仅移除历史。")
                             .foregroundStyle(.tertiary)
                     }
                 }

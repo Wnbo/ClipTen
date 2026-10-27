@@ -65,6 +65,9 @@ struct HistoryView: View {
                         ForEach(store.history.records) { record in
                             ClipRow(record: record, thumbnail: store.thumbnail(for: record),
                                     isCurrent: store.currentRecordID == record.id,
+                                    canToggleLock: !store.isLoading && !store.isChangingStorage &&
+                                        (record.isLocked || store.history.lockedCount < ClipHistory.lockLimit),
+                                    toggleLock: { store.toggleLock(record) },
                                     preview: { preview(record) }, action: { select(record) }, remove: { store.requestRemove(record) })
                         }
                     }.padding(8)
@@ -83,6 +86,7 @@ struct HistoryView: View {
                 if !store.history.records.isEmpty {
                     Button("清空") { store.requestClear() }.disabled(store.isLoading)
                         .buttonStyle(HoverButtonStyle(tint: .red))
+                        .help("清空未锁定记录和系统剪贴板，保留锁定记录")
                 }
                 Button("退出") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(HoverButtonStyle())
@@ -100,7 +104,7 @@ struct HistoryView: View {
                     Color.black.opacity(0.12).contentShape(Rectangle())
                     VStack(alignment: .leading, spacing: 10) {
                         Text(deletionTitle(deletion)).font(.system(size: 13, weight: .semibold))
-                        Text("系统剪贴板也会被清空，之后无法直接粘贴当前内容。")
+                        Text(deletionMessage(deletion))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
@@ -125,9 +129,16 @@ struct HistoryView: View {
         .onChange(of: store.permissionNotice != nil) { _ in layoutDidChange() }
         .onChange(of: store.diskError != nil) { _ in layoutDidChange() }
     }
+    private func deletionMessage(_ deletion: ClipboardStore.PendingDeletion) -> String {
+        switch deletion {
+        case .all: return "锁定记录会保留。系统剪贴板将被清空，之后无法直接粘贴当前内容。"
+        case .current: return "系统剪贴板也会被清空，之后无法直接粘贴当前内容。"
+        }
+    }
+
     private func deletionTitle(_ deletion: ClipboardStore.PendingDeletion) -> String {
         switch deletion {
-        case .all: return "清空全部历史和系统剪贴板？"
+        case .all: return "清空未锁定记录和系统剪贴板？"
         case .current: return "删除当前记录并清空系统剪贴板？"
         }
     }
@@ -137,6 +148,8 @@ private struct ClipRow: View {
     let record: ClipRecord
     let thumbnail: NSImage?
     let isCurrent: Bool
+    let canToggleLock: Bool
+    let toggleLock: () -> Void
     let preview: () -> Void
     let action: () -> Void
     let remove: () -> Void
@@ -199,11 +212,21 @@ private struct ClipRow: View {
           .accessibilityLabel(accessibilityTitle)
           .help("恢复到剪贴板")
           .interactiveCursor()
+          Button(action: toggleLock) {
+              Image(systemName: record.isLocked ? "lock.fill" : "lock.open")
+                  .font(.system(size: 12))
+                  .foregroundStyle(record.isLocked ? Color.accentColor : Color.secondary.opacity(canToggleLock ? 1 : 0.35))
+                  .frame(width: 28, height: 32).contentShape(Rectangle())
+          }.buttonStyle(HoverButtonStyle(horizontalPadding: 0, verticalPadding: 0))
+              .disabled(!canToggleLock)
+              .help(record.isLocked ? "解锁记录" : (canToggleLock ? "锁定记录，防止被新内容替换" : "最多锁定 7 条，请先解锁一条"))
+              .accessibilityLabel(record.isLocked ? "解锁记录" : "锁定记录")
           Button(action: remove) {
               Image(systemName: "trash").font(.system(size: 12))
                   .frame(width: 28, height: 32).contentShape(Rectangle())
           }.buttonStyle(HoverButtonStyle(tint: .red, horizontalPadding: 0, verticalPadding: 0))
-              .help("删除这条记录").accessibilityLabel("删除这条记录")
+              .disabled(record.isLocked)
+              .help(record.isLocked ? "请先解锁再删除" : "删除这条记录").accessibilityLabel("删除这条记录")
               .padding(.trailing, 6)
         }
         .background(hovering ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 10))
